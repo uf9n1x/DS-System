@@ -43,7 +43,7 @@ DS-System是一个基于Flask和Vue.js开发的简单局域网数字共享系统
 
 ### 前端
 - Vue.js 3
-- Vuex 状态管理
+- Pinia 状态管理（**注意：不是Vuex**）
 - Vue Router 路由管理
 - Axios HTTP客户端
 - Tailwind CSS 样式框架
@@ -67,16 +67,26 @@ cd DS-System
 
 #### 2.1 安装Python依赖
 
+**方法1：使用标准虚拟环境**
 ```bash
-# 建议使用虚拟环境
+# 创建虚拟环境
 python -m venv venv
 # Windows激活虚拟环境
 venv\Scripts\activate
 # Linux/Mac激活虚拟环境
 source venv/bin/activate
-
 # 安装依赖
 pip install -r requirements.txt
+```
+
+**方法2：使用uv包管理器（推荐）**
+```bash
+# 创建虚拟环境
+uv venv --python python311
+# 激活虚拟环境
+uv venv activate
+# 安装依赖
+uv pip install -r requirements.txt
 ```
 
 #### 2.2 数据库配置
@@ -88,7 +98,7 @@ pip install -r requirements.txt
 2. 在MySQL中执行以下命令：
 
 ```sql
-CREATE DATABASE webtools DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE webtools DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 CREATE DATABASE datashare DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
@@ -118,7 +128,9 @@ UPLOAD_FOLDER=backend/uploads
 MAX_CONTENT_LENGTH=100
 ```
 
-**注意**：请将`your_password`、`your-flask-secret-key-change-this-in-production`等替换为实际的值。
+**注意**：
+- 请将`your_password`、`your-flask-secret-key-change-this-in-production`等替换为实际的值
+- 数据库排序规则可以根据实际需求调整，系统支持`utf8mb4_general_ci`和`utf8mb4_unicode_ci`
 
 #### 2.3 初始化数据库
 
@@ -143,87 +155,33 @@ cd frontend
 npm install
 ```
 
-#### 3.2 配置API地址
+#### 3.2 API地址配置
 
-在`frontend/src/store/index.js`中配置API地址：
+**重要说明**：前端API地址采用相对路径配置，无需手动修改！
 
-```javascript
-// 默认API地址为 http://localhost:5001/api
-// 如果后端运行在不同的地址或端口，请修改此处
-const API_BASE_URL = process.env.VUE_APP_API_BASE_URL || 'http://localhost:5001/api'
-```
+- 前端代码中已在`src/main.js`中配置`axios.defaults.baseURL = '/api'`
+- 开发环境下，Vite开发服务器会自动将`/api`请求代理到后端服务
+- 生产环境下，需要通过Web服务器（如Nginx）配置反向代理
 
-或者通过环境变量配置：
-
-创建`.env`文件在`frontend`目录下：
-
-```env
-VUE_APP_API_BASE_URL=http://your-backend-ip:5001/api
-```
-
-#### 3.3 构建前端项目
-
-开发环境：
-```bash
-npm run dev
-```
-
-生产环境：
-```bash
-npm run build
-```
-
-构建完成后，将`dist`目录下的文件部署到Web服务器即可。
+**Vite开发服务器代理配置**：
+前端已内置Vite代理配置，无需手动修改。代理配置位于`vite.config.js`中，会自动将`/api`请求代理到`http://localhost:5001`
 
 ## 运行项目
 
 ### 本地开发调试启动方式
 
-#### 1. 运行后端服务
+**步骤1：启动后端服务**
 
-**步骤1：确保已安装所有Python依赖**
 ```bash
 # 在项目根目录下
-python -m venv venv
-# Windows激活虚拟环境
-venv\Scripts\activate
-# Linux/Mac激活虚拟环境
-source venv/bin/activate
-# 安装依赖
-pip install -r requirements.txt
-```
-
-**步骤2：配置环境变量**
-```bash
-# 在项目根目录下创建.env文件，添加以下配置
-# 参考前面的数据库配置部分
-DB_USER=root
-DB_PASSWORD=your_password
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=webtools
-DATASHARE_DB_NAME=datashare
-JWT_SECRET_KEY=a-very-secure-jwt-secret-key-change-this-in-production
-DEBUG=True
-```
-
-**步骤3：启动后端服务**
-```bash
-# 在项目根目录下
+# 确保已激活虚拟环境
 python app.py
 ```
 
-后端服务将运行在 `http://0.0.0.0:5001`，可以通过 `http://localhost:5001/api` 访问API
-
-#### 2. 运行前端开发服务器
-
-**步骤1：确保已安装所有Node.js依赖**
-```bash
-# 在frontend目录下
-npm install
-```
+后端服务将运行在 `http://0.0.0.0:5001`
 
 **步骤2：启动前端开发服务器**
+
 ```bash
 # 在frontend目录下
 npm run dev
@@ -231,14 +189,14 @@ npm run dev
 
 前端开发服务器将运行在 `http://localhost:5173`
 
-#### 3. 访问系统
+**步骤3：访问系统**
 
 在浏览器中访问：`http://localhost:5173`
 
 **注意事项**：
 - 确保MySQL服务已启动
 - 确保后端服务和前端开发服务器都在运行
-- 如果前端无法连接到后端，请检查API地址配置是否正确
+- 前端会自动将所有`/api`请求代理到后端服务
 
 ### 生产环境部署说明
 
@@ -247,11 +205,11 @@ npm run dev
 **步骤1：准备生产环境**
 ```bash
 # 1. 创建生产环境虚拟环境
-python -m venv venv_prod
+uv venv --python python311 venv_prod
 # 激活虚拟环境
 venv_prod\Scripts\activate
 # 安装生产依赖
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 **步骤2：配置生产环境变量**
@@ -276,31 +234,11 @@ SECRET_KEY=your-very-strong-flask-secret-key-production
 
 ```bash
 # 安装Gunicorn
-pip install gunicorn
+uv pip install gunicorn
 
 # 使用Gunicorn启动后端服务
 # 示例：使用4个工作进程，绑定到0.0.0.0:5001
 gunicorn -w 4 -b 0.0.0.0:5001 app:app
-```
-
-**步骤4：配置系统服务（可选，推荐）**
-
-创建系统服务文件，如 `/etc/systemd/system/ds-system.service`（Linux系统）：
-
-```ini
-[Unit]
-Description=DS-System Backend Service
-After=network.target
-
-[Service]
-User=www-data
-WorkingDirectory=/path/to/DS-System
-Environment=PATH=/path/to/DS-System/venv_prod/bin
-ExecStart=/path/to/DS-System/venv_prod/bin/gunicorn -w 4 -b 0.0.0.0:5001 app:app
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
 ```
 
 #### 2. 前端部署
@@ -309,19 +247,6 @@ WantedBy=multi-user.target
 
 ```bash
 # 在frontend目录下
-# 配置生产环境API地址
-VUE_APP_API_BASE_URL=http://your-production-backend-ip:5001/api npm run build
-```
-
-或者在frontend目录下创建`.env.production`文件：
-
-```env
-VUE_APP_API_BASE_URL=http://your-production-backend-ip:5001/api
-```
-
-然后执行构建：
-
-```bash
 npm run build
 ```
 
@@ -343,9 +268,9 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # 配置API反向代理
+    # 配置API反向代理，将/api请求转发到后端服务
     location /api {
-        proxy_pass http://localhost:5001/api;
+        proxy_pass http://localhost:5001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -354,190 +279,22 @@ server {
 }
 ```
 
-**步骤3：配置HTTPS（可选，推荐）**
-
-可以使用Let's Encrypt等服务获取免费SSL证书：
+**步骤3：启动生产环境**
 
 ```bash
-# 安装Certbot
-apt install certbot python3-certbot-nginx
-
-# 获取SSL证书
-certbot --nginx -d your-domain.com
-```
-
-#### 3. 数据库配置
-
-**步骤1：创建生产数据库**
-
-```sql
-CREATE DATABASE webtools_prod DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE datashare_prod DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-**步骤2：初始化生产数据库**
-
-```bash
-# 在项目根目录下
-# 确保已激活生产虚拟环境
-# 设置环境变量为生产配置
-set FLASK_ENV=production
-set FLASK_APP=app.py
-python -c "from app import app; with app.app_context(): from backend.extensions import db; db.create_all()"
-```
-
-**步骤3：创建生产环境管理员用户**
-
-可以通过运行以下Python脚本创建管理员用户：
-
-```python
-from app import app
-from backend.extensions import db
-from backend.models.user import User
-from backend.utils.auth import hash_password
-
-with app.app_context():
-    # 检查是否已存在管理员用户
-    admin_user = User.query.filter_by(role='admin').first()
-    if not admin_user:
-        # 创建默认管理员用户
-        default_admin = User(
-            username='admin',
-            password_hash=hash_password('your_strong_admin_password'),
-            email='admin@your-domain.com',
-            role='admin'
-        )
-        db.session.add(default_admin)
-        db.session.commit()
-        print("生产环境管理员用户创建成功!")
-    else:
-        print("管理员用户已存在!")
-```
-
-将上述脚本保存为`create_admin.py`，然后执行：
-
-```bash
-python create_admin.py
-```
-
-#### 4. 启动生产环境
-
-**步骤1：启动后端服务**
-
-```bash
-# 使用Gunicorn启动后端
+# 启动后端服务
 cd /path/to/DS-System
 source venv_prod/bin/activate
 gunicorn -w 4 -b 0.0.0.0:5001 app:app --daemon
-```
 
-或者使用系统服务：
-
-```bash
-systemctl start ds-system
-systemctl enable ds-system
-```
-
-**步骤2：启动Nginx服务**
-
-```bash
+# 启动Nginx服务
 systemctl start nginx
 systemctl enable nginx
 ```
 
-**步骤3：验证部署**
+**步骤4：验证部署**
 
 在浏览器中访问：`http://your-domain.com` 或 `https://your-domain.com`（如果配置了HTTPS）
-
-#### 5. 生产环境监控和维护
-
-**建议**：
-- 配置日志监控，定期检查日志
-- 定期备份数据库
-- 定期更新依赖包
-- 配置防火墙，只开放必要的端口
-- 考虑使用Docker容器化部署，便于管理和扩展
-
-### 部署架构示意图
-
-```
-+-------------------+     +-------------------+     +-------------------+
-|  用户浏览器       |     |  Nginx Web服务器  |     |  Flask后端服务    |
-|                   |     |                   |     |                   |
-|  HTTPS请求        |---->|  1. 静态文件服务  |     |  1. API处理       |
-|                   |     |  2. API反向代理   |---->|  2. 数据库操作    |
-+-------------------+     +-------------------+     |  3. 业务逻辑      |
-                                                    +-------------------+
-                                                           |
-                                                           v
-                                                    +-------------------+
-                                                    |  MySQL数据库      |
-                                                    |  1. webtools_prod |
-                                                    |  2. datashare_prod|
-                                                    +-------------------+
-```
-
-## 使用说明
-
-### 1. 用户管理
-
-#### 1.1 注册新用户
-1. 访问登录页面，点击"注册"链接
-2. 填写用户名、密码和邮箱
-3. 点击"注册"按钮
-
-#### 1.2 登录系统
-1. 访问登录页面
-2. 输入用户名和密码
-3. 点击"登录"按钮
-
-#### 1.3 管理用户（管理员）
-1. 登录管理员账号
-2. 进入"用户管理"页面
-3. 可以查看、编辑和删除用户
-
-### 2. 文件管理
-
-#### 2.1 上传文件
-1. 登录系统
-2. 进入"文件管理"页面
-3. 点击"上传文件"按钮
-4. 选择要上传的文件
-5. 点击"确定"按钮
-
-#### 2.2 下载文件
-1. 登录系统
-2. 进入"文件管理"页面
-3. 找到要下载的文件
-4. 点击"下载"按钮
-
-#### 2.3 查看文件详情
-1. 登录系统
-2. 进入"文件管理"页面
-3. 找到要查看的文件
-4. 点击文件名查看详情
-
-### 3. 数据共享
-
-#### 3.1 创建数据表
-1. 登录系统
-2. 进入"数据共享"页面
-3. 点击"创建数据表"按钮
-4. 填写表名和字段信息
-5. 点击"创建"按钮
-
-#### 3.2 管理数据表
-1. 登录系统
-2. 进入"数据共享"页面
-3. 点击数据表名称进入详情页
-4. 可以添加、编辑、删除数据
-5. 可以设置表格权限
-
-#### 3.3 导出数据
-1. 进入数据表详情页
-2. 点击"导出"按钮
-3. 选择导出格式（CSV/Excel）
-4. 点击"确定"按钮
 
 ## 项目结构
 
@@ -549,10 +306,10 @@ DS-System/
 │   │   ├── file.py        # 文件模型
 │   │   └── data_share.py  # 数据共享模型
 │   ├── routes/            # API路由
-│   │   ├── auth.py        # 认证路由
-│   │   ├── files.py       # 文件路由
-│   │   ├── users.py       # 用户路由
-│   │   └── data.py        # 数据共享路由
+│   │   ├── auth.py        # 认证路由 (/api/auth)
+│   │   ├── files.py       # 文件路由 (/api/files)
+│   │   ├── users.py       # 用户路由 (/api/users)
+│   │   └── data.py        # 数据共享路由 (/api/data)
 │   ├── utils/             # 工具函数
 │   │   ├── auth.py        # 认证工具
 │   │   ├── file.py        # 文件工具
@@ -566,14 +323,22 @@ DS-System/
 │   ├── public/            # 静态资源
 │   ├── src/               # 源代码
 │   │   ├── assets/        # 资源文件
-│   │   ├── components/    # 组件
-│   │   ├── router/        # 路由
-│   │   ├── store/         # 状态管理
-│   │   ├── views/         # 页面
+│   │   ├── components/    # Vue组件
+│   │   ├── router/        # 路由配置
+│   │   ├── store/         # Pinia状态管理
+│   │   │   ├── index.js   # Pinia实例创建
+│   │   │   ├── auth.js    # 认证状态
+│   │   │   ├── files.js   # 文件状态
+│   │   │   ├── data.js    # 数据共享状态
+│   │   │   └── users.js   # 用户管理状态
+│   │   ├── views/         # 页面组件
 │   │   ├── App.vue        # 根组件
-│   │   └── main.js        # 入口文件
+│   │   ├── main.js        # 入口文件（含axios配置）
+│   │   └── style.css      # 全局样式
 │   ├── index.html         # HTML模板
-│   └── package.json       # 依赖配置
+│   ├── package.json       # 依赖配置
+│   ├── vite.config.js     # Vite配置（含API代理）
+│   └── tailwind.config.js # Tailwind CSS配置
 ├── app.py                 # 主应用入口
 ├── requirements.txt       # Python依赖
 ├── README.md              # 项目说明
@@ -581,9 +346,9 @@ DS-System/
 └── .gitignore             # Git忽略文件
 ```
 
-## 配置文件说明
+## 核心配置说明
 
-### .env 文件
+### 1. 后端配置文件（backend/config.py）
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
@@ -600,14 +365,48 @@ DS-System/
 | DEBUG | 调试模式 | False |
 | SECRET_KEY | Flask密钥 | your-flask-secret-key |
 
-## 安全建议
+### 2. 前端核心配置
 
-1. 生产环境中，务必修改默认的JWT_SECRET_KEY和SECRET_KEY
-2. 生产环境中，禁用DEBUG模式
-3. 定期备份数据库
-4. 限制文件上传大小，防止恶意上传
-5. 建议使用HTTPS协议，特别是在公网环境中
-6. 定期更新依赖包，修复安全漏洞
+#### 2.1 API配置（src/main.js）
+```javascript
+// 配置axios基础URL，使用相对路径
+axios.defaults.baseURL = '/api'
+```
+
+#### 2.2 Vite代理配置（vite.config.js）
+```javascript
+// 已内置代理配置，无需手动修改
+// 会自动将/api请求代理到http://localhost:5001
+```
+
+#### 2.3 状态管理
+- 使用**Pinia**进行状态管理，不是Vuex
+- 状态定义在`src/store/`目录下的各个模块文件中
+
+## 开发注意事项
+
+### 1. API请求格式
+
+所有API请求都使用相对路径，例如：
+- 用户登录：`POST /api/auth/login`
+- 获取文件列表：`GET /api/files`
+- 上传文件：`POST /api/files`
+
+### 2. 状态管理
+
+- 使用`useAuthStore()`、`useFilesStore()`等钩子函数访问状态
+- 示例：
+  ```javascript
+  import { useAuthStore } from '../store/auth'
+  const authStore = useAuthStore()
+  authStore.login(credentials)
+  ```
+
+### 3. 数据库迁移
+
+- 系统使用SQLAlchemy ORM，不使用Alembic等迁移工具
+- 修改模型后，需要删除旧的数据库表并重新运行应用创建新表
+- 生产环境中建议先备份数据再进行模型修改
 
 ## 常见问题
 
@@ -615,21 +414,28 @@ DS-System/
 - 检查数据库服务是否正常运行
 - 检查数据库配置是否正确
 - 检查数据库用户权限
+- 确保已创建所需的数据库
 
 ### 2. 文件上传失败
-- 检查文件大小是否超过限制
+- 检查文件大小是否超过限制（默认100MB）
 - 检查上传目录权限
 - 检查网络连接
 
 ### 3. 前端无法连接到后端
-- 检查后端服务是否正常运行
-- 检查API地址配置是否正确
-- 检查CORS配置
+- 确保后端服务正在运行
+- 确保前端开发服务器正在运行
+- 检查浏览器控制台是否有CORS错误
+- 检查Vite代理配置是否正确
 
 ### 4. 登录失败
 - 检查用户名和密码是否正确
 - 检查JWT令牌是否过期
 - 检查同一账号是否在其他地方登录
+
+### 5. 数据库排序规则问题
+- 系统支持`utf8mb4_general_ci`和`utf8mb4_unicode_ci`排序规则
+- 可以根据实际需求在创建数据库时指定
+- 不同排序规则可能会影响字符串比较和排序结果
 
 ## 贡献指南
 
