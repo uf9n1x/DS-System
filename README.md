@@ -102,9 +102,20 @@ CREATE DATABASE webtools DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_c
 CREATE DATABASE datashare DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-3. 配置环境变量
+3. 配置说明
 
-创建`.env`文件，添加以下配置：
+项目的配置主要通过`backend/config.py`文件管理，支持三种配置方式（优先级从高到低）：
+
+**方式1：环境变量**（推荐用于生产环境）
+```bash
+# 示例：设置环境变量
+set DB_USER=root
+set DB_PASSWORD=your_password
+set DEBUG=False
+```
+
+**方式2：.env文件**（推荐用于开发环境）
+创建`.env`文件在项目根目录下，添加以下配置：
 
 ```env
 # 数据库配置
@@ -128,9 +139,14 @@ UPLOAD_FOLDER=backend/uploads
 MAX_CONTENT_LENGTH=100
 ```
 
+**方式3：默认值**（在`backend/config.py`中定义）
+如果没有设置环境变量或.env文件，系统将使用`backend/config.py`中定义的默认值。
+
 **注意**：
 - 请将`your_password`、`your-flask-secret-key-change-this-in-production`等替换为实际的值
 - 数据库排序规则可以根据实际需求调整，系统支持`utf8mb4_general_ci`和`utf8mb4_unicode_ci`
+- `.env`文件是可选的，如果不创建，系统将使用默认值
+- 生产环境建议使用环境变量配置，更安全
 
 #### 2.3 初始化数据库
 
@@ -213,6 +229,22 @@ uv pip install -r requirements.txt
 ```
 
 **步骤2：配置生产环境变量**
+
+生产环境配置支持以下方式（优先级从高到低）：
+
+**方式1：直接设置环境变量**（推荐）
+```bash
+# 示例：设置生产环境变量
+set DB_USER=root
+set DB_PASSWORD=your_strong_production_password
+set DB_NAME=webtools_prod
+set DATASHARE_DB_NAME=datashare_prod
+set JWT_SECRET_KEY=your-very-strong-jwt-secret-key-production
+set DEBUG=False
+set SECRET_KEY=your-very-strong-flask-secret-key-production
+```
+
+**方式2：使用.env.prod文件**
 ```bash
 # 在项目根目录下创建.env.prod文件
 # 注意：生产环境务必使用强密码和密钥
@@ -227,6 +259,14 @@ JWT_ACCESS_TOKEN_EXPIRES=3600
 DEBUG=False
 SECRET_KEY=your-very-strong-flask-secret-key-production
 ```
+
+**方式3：修改backend/config.py文件**
+直接修改`backend/config.py`中的默认值（不推荐，不利于多环境管理）
+
+**注意**：
+- 生产环境务必使用强密码和密钥
+- 建议使用环境变量方式配置，更安全
+- `.env.prod`文件是可选的，如果不创建，可以直接设置环境变量
 
 **步骤3：使用WSGI服务器部署后端**
 
