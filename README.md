@@ -177,17 +177,53 @@ npm run build
 
 ## 运行项目
 
-### 1. 运行后端服务
+### 本地开发调试启动方式
 
+#### 1. 运行后端服务
+
+**步骤1：确保已安装所有Python依赖**
+```bash
+# 在项目根目录下
+python -m venv venv
+# Windows激活虚拟环境
+venv\Scripts\activate
+# Linux/Mac激活虚拟环境
+source venv/bin/activate
+# 安装依赖
+pip install -r requirements.txt
+```
+
+**步骤2：配置环境变量**
+```bash
+# 在项目根目录下创建.env文件，添加以下配置
+# 参考前面的数据库配置部分
+DB_USER=root
+DB_PASSWORD=your_password
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=webtools
+DATASHARE_DB_NAME=datashare
+JWT_SECRET_KEY=a-very-secure-jwt-secret-key-change-this-in-production
+DEBUG=True
+```
+
+**步骤3：启动后端服务**
 ```bash
 # 在项目根目录下
 python app.py
 ```
 
-后端服务将运行在 `http://0.0.0.0:5001`
+后端服务将运行在 `http://0.0.0.0:5001`，可以通过 `http://localhost:5001/api` 访问API
 
-### 2. 运行前端开发服务器
+#### 2. 运行前端开发服务器
 
+**步骤1：确保已安装所有Node.js依赖**
+```bash
+# 在frontend目录下
+npm install
+```
+
+**步骤2：启动前端开发服务器**
 ```bash
 # 在frontend目录下
 npm run dev
@@ -195,9 +231,251 @@ npm run dev
 
 前端开发服务器将运行在 `http://localhost:5173`
 
-### 3. 访问系统
+#### 3. 访问系统
 
 在浏览器中访问：`http://localhost:5173`
+
+**注意事项**：
+- 确保MySQL服务已启动
+- 确保后端服务和前端开发服务器都在运行
+- 如果前端无法连接到后端，请检查API地址配置是否正确
+
+### 生产环境部署说明
+
+#### 1. 后端部署
+
+**步骤1：准备生产环境**
+```bash
+# 1. 创建生产环境虚拟环境
+python -m venv venv_prod
+# 激活虚拟环境
+venv_prod\Scripts\activate
+# 安装生产依赖
+pip install -r requirements.txt
+```
+
+**步骤2：配置生产环境变量**
+```bash
+# 在项目根目录下创建.env.prod文件
+# 注意：生产环境务必使用强密码和密钥
+DB_USER=root
+DB_PASSWORD=your_strong_production_password
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=webtools_prod
+DATASHARE_DB_NAME=datashare_prod
+JWT_SECRET_KEY=your-very-strong-jwt-secret-key-production
+JWT_ACCESS_TOKEN_EXPIRES=3600
+DEBUG=False
+SECRET_KEY=your-very-strong-flask-secret-key-production
+```
+
+**步骤3：使用WSGI服务器部署后端**
+
+推荐使用Gunicorn或uWSGI作为WSGI服务器：
+
+```bash
+# 安装Gunicorn
+pip install gunicorn
+
+# 使用Gunicorn启动后端服务
+# 示例：使用4个工作进程，绑定到0.0.0.0:5001
+gunicorn -w 4 -b 0.0.0.0:5001 app:app
+```
+
+**步骤4：配置系统服务（可选，推荐）**
+
+创建系统服务文件，如 `/etc/systemd/system/ds-system.service`（Linux系统）：
+
+```ini
+[Unit]
+Description=DS-System Backend Service
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/path/to/DS-System
+Environment=PATH=/path/to/DS-System/venv_prod/bin
+ExecStart=/path/to/DS-System/venv_prod/bin/gunicorn -w 4 -b 0.0.0.0:5001 app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### 2. 前端部署
+
+**步骤1：构建前端项目**
+
+```bash
+# 在frontend目录下
+# 配置生产环境API地址
+VUE_APP_API_BASE_URL=http://your-production-backend-ip:5001/api npm run build
+```
+
+或者在frontend目录下创建`.env.production`文件：
+
+```env
+VUE_APP_API_BASE_URL=http://your-production-backend-ip:5001/api
+```
+
+然后执行构建：
+
+```bash
+npm run build
+```
+
+构建完成后，将生成`dist`目录，包含所有静态文件。
+
+**步骤2：部署前端静态文件**
+
+可以使用Nginx或Apache等Web服务器部署前端静态文件。以下是Nginx配置示例：
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    root /path/to/DS-System/frontend/dist;
+    index index.html;
+
+    # 处理单页应用路由
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 配置API反向代理
+    location /api {
+        proxy_pass http://localhost:5001/api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**步骤3：配置HTTPS（可选，推荐）**
+
+可以使用Let's Encrypt等服务获取免费SSL证书：
+
+```bash
+# 安装Certbot
+apt install certbot python3-certbot-nginx
+
+# 获取SSL证书
+certbot --nginx -d your-domain.com
+```
+
+#### 3. 数据库配置
+
+**步骤1：创建生产数据库**
+
+```sql
+CREATE DATABASE webtools_prod DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE datashare_prod DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+**步骤2：初始化生产数据库**
+
+```bash
+# 在项目根目录下
+# 确保已激活生产虚拟环境
+# 设置环境变量为生产配置
+set FLASK_ENV=production
+set FLASK_APP=app.py
+python -c "from app import app; with app.app_context(): from backend.extensions import db; db.create_all()"
+```
+
+**步骤3：创建生产环境管理员用户**
+
+可以通过运行以下Python脚本创建管理员用户：
+
+```python
+from app import app
+from backend.extensions import db
+from backend.models.user import User
+from backend.utils.auth import hash_password
+
+with app.app_context():
+    # 检查是否已存在管理员用户
+    admin_user = User.query.filter_by(role='admin').first()
+    if not admin_user:
+        # 创建默认管理员用户
+        default_admin = User(
+            username='admin',
+            password_hash=hash_password('your_strong_admin_password'),
+            email='admin@your-domain.com',
+            role='admin'
+        )
+        db.session.add(default_admin)
+        db.session.commit()
+        print("生产环境管理员用户创建成功!")
+    else:
+        print("管理员用户已存在!")
+```
+
+将上述脚本保存为`create_admin.py`，然后执行：
+
+```bash
+python create_admin.py
+```
+
+#### 4. 启动生产环境
+
+**步骤1：启动后端服务**
+
+```bash
+# 使用Gunicorn启动后端
+cd /path/to/DS-System
+source venv_prod/bin/activate
+gunicorn -w 4 -b 0.0.0.0:5001 app:app --daemon
+```
+
+或者使用系统服务：
+
+```bash
+systemctl start ds-system
+systemctl enable ds-system
+```
+
+**步骤2：启动Nginx服务**
+
+```bash
+systemctl start nginx
+systemctl enable nginx
+```
+
+**步骤3：验证部署**
+
+在浏览器中访问：`http://your-domain.com` 或 `https://your-domain.com`（如果配置了HTTPS）
+
+#### 5. 生产环境监控和维护
+
+**建议**：
+- 配置日志监控，定期检查日志
+- 定期备份数据库
+- 定期更新依赖包
+- 配置防火墙，只开放必要的端口
+- 考虑使用Docker容器化部署，便于管理和扩展
+
+### 部署架构示意图
+
+```
++-------------------+     +-------------------+     +-------------------+
+|  用户浏览器       |     |  Nginx Web服务器  |     |  Flask后端服务    |
+|                   |     |                   |     |                   |
+|  HTTPS请求        |---->|  1. 静态文件服务  |     |  1. API处理       |
+|                   |     |  2. API反向代理   |---->|  2. 数据库操作    |
++-------------------+     +-------------------+     |  3. 业务逻辑      |
+                                                    +-------------------+
+                                                           |
+                                                           v
+                                                    +-------------------+
+                                                    |  MySQL数据库      |
+                                                    |  1. webtools_prod |
+                                                    |  2. datashare_prod|
+                                                    +-------------------+
+```
 
 ## 使用说明
 

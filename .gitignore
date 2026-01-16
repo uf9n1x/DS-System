@@ -186,3 +186,19 @@ Thumbs.db
 .venv/
 env/
 venv/
+
+# Skills example directories
+.agent/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.kiro/
+.roo/
+.shared/
+.trae/
+.windsurf/
+
+# Other temporary files
+1.html
+app.log
