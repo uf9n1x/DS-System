@@ -1,0 +1,76 @@
+# ============================================
+# DS-System Docker Compose 配置文件
+# 使用远程数据库版本
+# ============================================
+
+version: '3.8'
+
+services:
+  # ==================== 应用服务 (Flask + Vue) ====================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ds-app
+    restart: always
+    environment:
+      # 远程数据库配置（修改为你的远程数据库信息）
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      DB_HOST: ${DB_HOST:-your-remote-mysql-host}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-webtools}
+      DATASHARE_DB_NAME: ${DATASHARE_DB_NAME:-datashare}
+      # JWT配置
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-jwt-secret-key-change-in-production}
+      JWT_ACCESS_TOKEN_EXPIRES: ${JWT_ACCESS_TOKEN_EXPIRES:-3600}
+      # Flask配置
+      SECRET_KEY: ${SECRET_KEY:-your-flask-secret-key-change-in-production}
+      DEBUG: "False"
+      # 文件上传配置
+      UPLOAD_FOLDER: /app/backend/uploads
+      MAX_CONTENT_LENGTH: 100
+    ports:
+      - "${APP_PORT:-5001}:5001"
+    volumes:
+      - uploads_data:/app/backend/uploads
+      - ./app.log:/app/app.log
+    networks:
+      - ds-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/api/auth/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==================== Nginx 反向代理 ====================
+  nginx:
+    image: nginx:alpine
+    container_name: ds-nginx
+    restart: always
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - app
+    networks:
+      - ds-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ==================== 网络配置 ====================
+networks:
+  ds-network:
+    driver: bridge
+    name: ds-network
+
+# ==================== 数据卷配置 ====================
+volumes:
+  uploads_data:
+    name: ds-uploads-data
