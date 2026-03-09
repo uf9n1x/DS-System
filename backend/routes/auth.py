@@ -11,6 +11,21 @@ from ..utils.auth import hash_password, verify_password, create_jwt_token
 # 创建蓝图
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
+@bp.route('/health', methods=['GET'], strict_slashes=False)
+def health_check():
+    """
+    健康检查端点
+    
+    用于Docker健康检查和负载均衡器探测
+    
+    返回：
+    {"status": "healthy", "service": "ds-system"}
+    """
+    return jsonify({
+        'status': 'healthy',
+        'service': 'ds-system'
+    }), 200
+
 @bp.route('/register', methods=['POST'], strict_slashes=False)
 def register():
     """

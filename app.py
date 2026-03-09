@@ -5,7 +5,7 @@
 import os
 import sys
 from datetime import timedelta
-from flask import Flask
+from flask import Flask, send_from_directory, send_file
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -96,6 +96,33 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(files_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(data_bp)
+
+# 前端静态文件服务（生产环境）
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'dist')
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    """
+    服务前端静态文件
+    
+    对于SPA应用，所有非API路由都返回index.html
+    """
+    # API路由由蓝图处理
+    if path.startswith('api/') or path.startswith('upload/'):
+        return app.send_static_file(path)
+    
+    # 检查请求的文件是否存在
+    file_path = os.path.join(FRONTEND_DIST, path)
+    if path and os.path.exists(file_path) and os.path.isfile(file_path):
+        return send_from_directory(FRONTEND_DIST, path)
+    
+    # 返回index.html（SPA路由）
+    index_path = os.path.join(FRONTEND_DIST, 'index.html')
+    if os.path.exists(index_path):
+        return send_file(index_path)
+    
+    return jsonify({'error': 'Not found'}), 404
 
 # 创建数据库表
 try:
