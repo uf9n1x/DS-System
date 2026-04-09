@@ -68,20 +68,25 @@ def verify_token_identifier(headers, payload):
     Returns:
         bool: 令牌是否有效
     """
-    # 获取令牌标识符和用户ID
-    token_identifier = payload.get('token_identifier')
-    user_id = payload.get('sub')  # sub字段存储的是用户ID
-    
-    if not token_identifier or not user_id:
+    try:
+        # 获取令牌标识符和用户ID
+        token_identifier = payload.get('token_identifier')
+        user_id = payload.get('sub')  # sub字段存储的是用户ID
+        
+        if not token_identifier or not user_id:
+            return False
+        
+        # 查询用户
+        user = User.query.get(int(user_id))
+        if not user:
+            return False
+        
+        # 验证令牌标识符是否匹配
+        return user.jwt_token_identifier == token_identifier
+    except Exception as e:
+        # 发生错误时，返回False，使令牌无效
+        print(f"[JWT验证错误] {e}")
         return False
-    
-    # 查询用户
-    user = User.query.get(int(user_id))
-    if not user:
-        return False
-    
-    # 验证令牌标识符是否匹配
-    return user.jwt_token_identifier == token_identifier
 
 # 确保上传目录存在
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)

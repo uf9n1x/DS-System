@@ -65,8 +65,12 @@ export const useAuthStore = defineStore('auth', {
       this.isLoading = true
       
       try {
-        await axios.post('/auth/logout')
+        // 检查是否有token，如果没有则不发送请求
+        if (this.token) {
+          await axios.post('/auth/logout')
+        }
       } catch (error) {
+        // 忽略错误，因为即使请求失败，我们也需要清除登录状态
         console.error('登出失败:', error)
       } finally {
         // 清除localStorage和state
