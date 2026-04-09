@@ -3,7 +3,7 @@
     <div class="w-full max-w-md space-y-8 bg-white rounded-lg shadow-xl p-8 border border-slate-200">
       <!-- 标题 -->
       <div class="text-center">
-        <div class="bg-primary rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+        <div class="bg-primary-600 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
           <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
           </svg>
@@ -26,7 +26,7 @@
               type="text" 
               required 
               v-model="username"
-              class="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+              class="appearance-none block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all duration-300"
               placeholder="请输入用户名"
             >
           </div>
@@ -42,7 +42,7 @@
               type="password" 
               required 
               v-model="password"
-              class="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+              class="appearance-none block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all duration-300"
               placeholder="请输入密码"
             >
           </div>
@@ -58,7 +58,7 @@
           <button 
             type="submit" 
             :disabled="isLoading"
-            class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+            class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed shadow-md"
           >
             <span v-if="isLoading" class="flex items-center">
               <svg class="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

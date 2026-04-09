@@ -2,13 +2,12 @@
 """
 
 import os
-from flask import Blueprint, request, jsonify, send_from_directory
+from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from ..extensions import db
 from ..models.file import File
 from ..models.user import User
-from ..utils.file import save_file, delete_file, allowed_file
-from ..config import UPLOAD_FOLDER
+from ..utils.file import save_file, delete_file, allowed_file, cleanup_invalid_files
 
 # 创建蓝图
 bp = Blueprint('files', __name__, url_prefix='/api/files')
@@ -45,27 +44,37 @@ def upload_file():
                 continue
             
             if allowed_file(file.filename):
-                # 保存文件
-                filename, filepath = save_file(file)
-                # 获取文件大小 - 将相对路径转换为绝对路径
-                absolute_filepath = os.path.join(UPLOAD_FOLDER, filepath)
-                file_size = os.path.getsize(absolute_filepath)
-                
-                # 创建文件记录
-                new_file = File(
-                    filename=filename,
-                    filepath=filepath,
-                    size=file_size,
-                    user_id=current_user_id,
-                    is_shared=is_shared
-                )
-                
-                new_files.append(new_file)
-                db.session.add(new_file)
-                uploaded_files_data.append({
-                    'filename': filename,
-                    'size': file_size
-                })
+                try:
+                    # 保存文件
+                    filename, filepath = save_file(file)
+                    # 获取文件大小 - 将相对路径转换为绝对路径
+                    upload_folder = current_app.config['UPLOAD_FOLDER']
+                    absolute_filepath = os.path.join(upload_folder, filepath)
+                    file_size = os.path.getsize(absolute_filepath)
+                    
+                    # 创建文件记录
+                    new_file = File(
+                        filename=filename,
+                        filepath=filepath,
+                        size=file_size,
+                        user_id=current_user_id,
+                        is_shared=is_shared
+                    )
+                    
+                    new_files.append(new_file)
+                    db.session.add(new_file)
+                    uploaded_files_data.append({
+                        'filename': filename,
+                        'size': file_size
+                    })
+                except Exception as e:
+                    # 记录单个文件上传失败的错误，但继续处理其他文件
+                    import logging
+                    logging.error(f"文件上传失败: {str(e)}")
+                    continue
+        
+        if not new_files:
+            return jsonify({'error': '没有文件成功上传'}), 400
         
         db.session.commit()
         
@@ -86,13 +95,15 @@ def upload_file():
         }), 201
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import logging
+        logging.error(f"文件上传请求处理失败: {str(e)}")
+        return jsonify({'error': '文件上传失败，请稍后重试'}), 500
 
 @bp.route('/', methods=['GET'], strict_slashes=False)
 @jwt_required()
 def get_files():
     """
-    获取文件列表
+    获取文件列表（自动同步：清理不存在的文件记录）
     
     查询参数：
     - shared: 是否只获取共享文件（可选）
@@ -101,6 +112,7 @@ def get_files():
     返回：
     {"message": "获取文件列表成功", "files": [{"id": 1, "filename": "test.txt", "size": 1024}]}
     """
+    print("[DEBUG] get_files函数被调用了！")
     try:
         # 获取当前用户ID和角色
         current_user_id = int(get_jwt_identity())
@@ -121,9 +133,46 @@ def get_files():
             # 获取当前用户的文件
             files = File.query.filter(File.user_id == current_user_id).all()
         
-        # 转换为响应格式
-        file_list = []
+        # 自动同步：检查文件是否存在，清理不存在的记录
+        valid_files = []
+        invalid_files = []
+        
+        # 直接执行自动同步，不使用try-except块，这样可以看到具体的错误
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        print(f"[SYNC] 开始检查 {len(files)} 个文件记录")
+        print(f"[SYNC] UPLOAD_FOLDER: {upload_folder}")
+        
         for file in files:
+            # 获取文件的绝对路径
+            if os.path.isabs(file.filepath):
+                absolute_filepath = file.filepath
+            else:
+                absolute_filepath = os.path.join(upload_folder, file.filepath)
+            
+            # 检查文件是否存在
+            file_exists = os.path.exists(absolute_filepath)
+            print(f"[SYNC] 文件 ID:{file.id} 路径:{file.filepath} 完整路径:{absolute_filepath} 存在:{file_exists}")
+            
+            if file_exists:
+                valid_files.append(file)
+            else:
+                invalid_files.append(file)
+        
+        print(f"[SYNC] 有效文件: {len(valid_files)} 个, 无效文件: {len(invalid_files)} 个")
+        
+        # 清理无效的文件记录
+        if invalid_files:
+            print(f"[SYNC] 开始清理 {len(invalid_files)} 个无效文件记录")
+            for file in invalid_files:
+                db.session.delete(file)
+            db.session.commit()
+            print(f"[SYNC] 清理完成")
+        else:
+            print(f"[SYNC] 没有需要清理的无效文件记录")
+        
+        # 转换为响应格式（只返回有效的文件）
+        file_list = []
+        for file in valid_files:
             file_list.append({
                 'id': file.id,
                 'filename': file.filename,
@@ -139,6 +188,9 @@ def get_files():
         }), 200
         
     except Exception as e:
+        print(f"[ERROR] 获取文件列表时出错: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/<int:file_id>', methods=['GET'], strict_slashes=False)
@@ -171,10 +223,19 @@ def download_file(file_id):
             # 旧文件：使用绝对路径
             filename = os.path.basename(file.filepath)
             directory = os.path.dirname(file.filepath)
+            file_path = os.path.join(directory, filename)
         else:
             # 新文件：使用相对路径，结合UPLOAD_FOLDER
             filename = file.filepath
-            directory = UPLOAD_FOLDER
+            directory = current_app.config['UPLOAD_FOLDER']
+            file_path = os.path.join(directory, filename)
+        
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            # 尝试清理数据库中不存在的文件记录
+            db.session.delete(file)
+            db.session.commit()
+            return jsonify({'error': '文件不存在，已清理无效记录'}), 404
         
         # 发送文件
         return send_from_directory(directory, filename, as_attachment=True, download_name=file.filename)
@@ -214,7 +275,7 @@ def delete_file_route(file_id):
             absolute_filepath = file.filepath
         else:
             # 新文件：使用相对路径，结合UPLOAD_FOLDER
-            absolute_filepath = os.path.join(UPLOAD_FOLDER, file.filepath)
+            absolute_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filepath)
         
         if os.path.exists(absolute_filepath):
             os.remove(absolute_filepath)
@@ -259,11 +320,14 @@ def copy_shared_file(file_id):
             original_absolute_filepath = file.filepath
         else:
             # 新文件：使用相对路径，结合UPLOAD_FOLDER
-            original_absolute_filepath = os.path.join(UPLOAD_FOLDER, file.filepath)
+            original_absolute_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filepath)
         
         # 检查原始文件是否存在
         if not os.path.exists(original_absolute_filepath):
-            return jsonify({'error': '原始文件不存在'}), 404
+            # 尝试清理数据库中不存在的文件记录
+            db.session.delete(file)
+            db.session.commit()
+            return jsonify({'error': '原始文件不存在，已清理无效记录'}), 404
         
         # 生成新的文件名和路径
         import shutil
@@ -272,13 +336,26 @@ def copy_shared_file(file_id):
         # 生成唯一文件名
         file_ext = os.path.splitext(file.filename)[1]
         new_unique_filename = f"{uuid.uuid4().hex}{file_ext}"
-        new_absolute_filepath = os.path.join(UPLOAD_FOLDER, new_unique_filename)
+        new_absolute_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], new_unique_filename)
         
-        # 复制文件内容
-        shutil.copy2(original_absolute_filepath, new_absolute_filepath)
+        try:
+            # 复制文件内容
+            shutil.copy2(original_absolute_filepath, new_absolute_filepath)
+        except Exception as e:
+            import logging
+            logging.error(f"文件复制失败: {str(e)}")
+            return jsonify({'error': '文件复制失败，请稍后重试'}), 500
         
         # 获取文件大小
-        file_size = os.path.getsize(new_absolute_filepath)
+        try:
+            file_size = os.path.getsize(new_absolute_filepath)
+        except Exception as e:
+            import logging
+            logging.error(f"获取文件大小失败: {str(e)}")
+            # 清理已复制的文件
+            if os.path.exists(new_absolute_filepath):
+                os.remove(new_absolute_filepath)
+            return jsonify({'error': '文件复制失败，请稍后重试'}), 500
         
         # 创建新的文件记录，属于当前用户且非共享
         new_file = File(
@@ -290,8 +367,16 @@ def copy_shared_file(file_id):
         )
         
         # 保存到数据库
-        db.session.add(new_file)
-        db.session.commit()
+        try:
+            db.session.add(new_file)
+            db.session.commit()
+        except Exception as e:
+            import logging
+            logging.error(f"保存文件记录失败: {str(e)}")
+            # 清理已复制的文件
+            if os.path.exists(new_absolute_filepath):
+                os.remove(new_absolute_filepath)
+            return jsonify({'error': '文件复制失败，请稍后重试'}), 500
         
         # 构建响应数据
         response_file = {
@@ -308,7 +393,9 @@ def copy_shared_file(file_id):
         }), 201
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import logging
+        logging.error(f"文件复制请求处理失败: {str(e)}")
+        return jsonify({'error': '文件复制失败，请稍后重试'}), 500
 
 @bp.route('/<int:file_id>/share', methods=['PUT'], strict_slashes=False)
 @jwt_required()
@@ -335,6 +422,18 @@ def share_file(file_id):
         # 检查权限：管理员可以分享/取消分享所有文件，普通用户只能操作自己的文件
         if user.role != 'admin' and file.user_id != current_user_id:
             return jsonify({'error': '没有权限分享该文件'}), 403
+        
+        # 检查文件是否存在
+        if os.path.isabs(file.filepath):
+            absolute_filepath = file.filepath
+        else:
+            absolute_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filepath)
+        
+        if not os.path.exists(absolute_filepath):
+            # 清理数据库中不存在的文件记录
+            db.session.delete(file)
+            db.session.commit()
+            return jsonify({'error': '文件不存在，已清理无效记录'}), 404
         
         # 更新分享状态
         data = request.get_json()
@@ -375,6 +474,18 @@ def rename_file(file_id):
         if user.role != 'admin' and file.user_id != current_user_id:
             return jsonify({'error': '没有权限重命名该文件'}), 403
         
+        # 检查文件是否存在
+        if os.path.isabs(file.filepath):
+            absolute_filepath = file.filepath
+        else:
+            absolute_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filepath)
+        
+        if not os.path.exists(absolute_filepath):
+            # 清理数据库中不存在的文件记录
+            db.session.delete(file)
+            db.session.commit()
+            return jsonify({'error': '文件不存在，已清理无效记录'}), 404
+        
         # 获取新文件名
         data = request.get_json()
         new_filename = data.get('filename')
@@ -393,6 +504,35 @@ def rename_file(file_id):
                 'filename': file.filename,
                 'is_shared': file.is_shared
             }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/admin/cleanup', methods=['POST'], strict_slashes=False)
+@jwt_required()
+def cleanup_files():
+    """
+    清理数据库中不存在的文件记录（仅管理员可用）
+    
+    返回：
+    {"message": "清理完成", "cleaned_count": 5}
+    """
+    try:
+        # 获取当前用户ID和角色
+        current_user_id = int(get_jwt_identity())
+        user = User.query.get(current_user_id)
+        
+        # 检查权限：只有管理员可以执行清理操作
+        if user.role != 'admin':
+            return jsonify({'error': '没有权限执行此操作'}), 403
+        
+        # 执行清理操作
+        cleaned_count = cleanup_invalid_files()
+        
+        return jsonify({
+            'message': '清理完成',
+            'cleaned_count': cleaned_count
         }), 200
         
     except Exception as e:

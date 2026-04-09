@@ -17,8 +17,24 @@ def allowed_file(filename):
     Returns:
         bool: 文件是否允许上传
     """
-    # 允许所有文件类型上传
-    return True
+    # 允许的文件类型
+    ALLOWED_EXTENSIONS = {
+        # 文档
+        'txt', 'doc', 'docx', 'pdf', 'xls', 'xlsx', 'ppt', 'pptx',
+        # 图像
+        'jpg', 'jpeg', 'png', 'gif', 'webp',
+        # 音频
+        'mp3', 'wav', 'ogg',
+        # 视频
+        'mp4', 'avi', 'mov',
+        # 压缩文件
+        'zip', 'rar', '7z', 'tar', 'gz',
+        # 代码文件
+        'py', 'js', 'html', 'css', 'json', 'xml', 'md'
+    }
+    
+    # 检查文件扩展名
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def save_file(file):
     """
@@ -43,6 +59,10 @@ def save_file(file):
     # 保存文件
     absolute_filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
     file.save(absolute_filepath)
+    
+    # 验证文件是否成功保存
+    if not os.path.exists(absolute_filepath):
+        raise Exception(f"文件保存失败: {absolute_filepath}")
     
     # 只返回相对路径（相对于UPLOAD_FOLDER）
     relative_filepath = unique_filename
@@ -82,3 +102,41 @@ def get_file_size(filepath):
     # 将相对路径转换为绝对路径
     absolute_filepath = os.path.join(UPLOAD_FOLDER, filepath)
     return os.path.getsize(absolute_filepath)
+
+def cleanup_invalid_files():
+    """
+    清理数据库中不存在的文件记录
+    
+    Returns:
+        int: 清理的无效记录数量
+    """
+    from ..models.file import File
+    from ..extensions import db
+    
+    try:
+        # 获取所有文件记录
+        all_files = File.query.all()
+        invalid_count = 0
+        
+        for file in all_files:
+            # 构建文件的绝对路径
+            if os.path.isabs(file.filepath):
+                file_path = file.filepath
+            else:
+                file_path = os.path.join(UPLOAD_FOLDER, file.filepath)
+            
+            # 检查文件是否存在
+            if not os.path.exists(file_path):
+                # 删除无效记录
+                db.session.delete(file)
+                invalid_count += 1
+        
+        # 提交更改
+        if invalid_count > 0:
+            db.session.commit()
+        
+        return invalid_count
+    except Exception as e:
+        # 发生错误时回滚
+        db.session.rollback()
+        return 0

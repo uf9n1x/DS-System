@@ -32,21 +32,27 @@ def check_table_exists(table_name, database=DATASHARE_DB_NAME):
         table_name = table_name.split('.')[-1]
         table_name = table_name.strip("'\"")
     
-    if database == DATASHARE_DB_NAME:
-        # 使用datashare数据库连接
-        engine = db.get_engine(bind=DATASHARE_DB_BIND)
-        inspector = db.inspect(engine)
-    else:
-        # 使用主数据库连接
-        engine = db.engine
-        inspector = db.inspect(engine)
-    
+    engine = None
     try:
+        if database == DATASHARE_DB_NAME:
+            # 使用datashare数据库连接
+            engine = db.get_engine(bind=DATASHARE_DB_BIND)
+        else:
+            # 使用主数据库连接
+            engine = db.engine
+        
+        inspector = db.inspect(engine)
         # 使用inspector.get_table_names()获取所有表格名称，然后进行精确匹配
         tables = inspector.get_table_names()
         return table_name in tables
+    except Exception as e:
+        # 记录错误但不抛出，返回False
+        import logging
+        logging.error(f"检查表格存在性失败: {str(e)}")
+        return False
     finally:
-        engine.dispose()
+        if engine:
+            engine.dispose()
 
 
 def global_search(search_query, database=DATASHARE_DB_NAME, tables_to_search=None):
@@ -174,6 +180,13 @@ table_columns_cache = {}
 # 全局缓存，存储表格真实总记录数，定期更新
 table_real_total_cache = {}
 
+# 缓存过期时间（秒）
+CACHE_EXPIRY = 300  # 5分钟
+
+# 缓存时间戳
+table_columns_cache_timestamp = {}
+table_real_total_cache_timestamp = {}
+
 
 def get_table_data(table_name, page=1, per_page=10, sort_by=None, sort_order='asc', database=DATASHARE_DB_NAME, columns=None, search_query=None):
     """
@@ -209,17 +222,31 @@ def get_table_data(table_name, page=1, per_page=10, sort_by=None, sort_order='as
         # 构建缓存键
         cache_key = f"{database}.{table_name}"
         
+        # 检查缓存是否过期
+        import time
+        current_time = time.time()
+        
         # 获取真实的表格总记录数（不考虑搜索条件），使用缓存优化
         real_total = 0
-        if cache_key in table_real_total_cache:
-            # 使用缓存的真实总记录数
-            real_total = table_real_total_cache[cache_key]
+        if cache_key in table_real_total_cache and cache_key in table_real_total_cache_timestamp:
+            # 检查缓存是否过期
+            if current_time - table_real_total_cache_timestamp[cache_key] < CACHE_EXPIRY:
+                # 使用缓存的真实总记录数
+                real_total = table_real_total_cache[cache_key]
+            else:
+                # 缓存过期，重新查询
+                real_total_result = connection.execute(text(f"SELECT COUNT(*) as real_total FROM `{table_name}`"))
+                real_total = real_total_result.fetchone()[0]
+                # 更新缓存
+                table_real_total_cache[cache_key] = real_total
+                table_real_total_cache_timestamp[cache_key] = current_time
         else:
             # 执行COUNT(*)查询获取真实总记录数
             real_total_result = connection.execute(text(f"SELECT COUNT(*) as real_total FROM `{table_name}`"))
             real_total = real_total_result.fetchone()[0]
             # 更新缓存
             table_real_total_cache[cache_key] = real_total
+            table_real_total_cache_timestamp[cache_key] = current_time
         
         # 确定要查询的列
         if columns:
@@ -238,15 +265,25 @@ def get_table_data(table_name, page=1, per_page=10, sort_by=None, sort_order='as
             try:
                 # 获取表格所有列，使用缓存优化
                 table_columns = []
-                if cache_key in table_columns_cache:
-                    # 使用缓存的列信息
-                    table_columns = table_columns_cache[cache_key]
+                if cache_key in table_columns_cache and cache_key in table_columns_cache_timestamp:
+                    # 检查缓存是否过期
+                    if current_time - table_columns_cache_timestamp[cache_key] < CACHE_EXPIRY:
+                        # 使用缓存的列信息
+                        table_columns = table_columns_cache[cache_key]
+                    else:
+                        # 缓存过期，重新查询
+                        columns_result = connection.execute(text(f"DESCRIBE `{table_name}`"))
+                        table_columns = [col for col in columns_result.fetchall()]
+                        # 更新缓存
+                        table_columns_cache[cache_key] = table_columns
+                        table_columns_cache_timestamp[cache_key] = current_time
                 else:
                     # 执行DESCRIBE查询获取列信息
                     columns_result = connection.execute(text(f"DESCRIBE `{table_name}`"))
                     table_columns = [col for col in columns_result.fetchall()]
                     # 更新缓存
                     table_columns_cache[cache_key] = table_columns
+                    table_columns_cache_timestamp[cache_key] = current_time
                 
                 # 构建模糊搜索条件，排除主键列
                 search_conditions = []

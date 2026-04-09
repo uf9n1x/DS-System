@@ -216,7 +216,7 @@ npm run dev
 
 ### 生产环境部署说明
 
-#### 1. 后端部署
+### 1. 后端部署
 
 **步骤1：准备生产环境**
 ```bash
@@ -226,6 +226,8 @@ uv venv --python python311 venv_prod
 venv_prod\Scripts\activate
 # 安装生产依赖
 uv pip install -r requirements.txt
+# 安装Gunicorn WSGI服务器
+uv pip install gunicorn
 ```
 
 **步骤2：配置生产环境变量**
@@ -260,33 +262,28 @@ DEBUG=False
 SECRET_KEY=your-very-strong-flask-secret-key-production
 ```
 
-**方式3：修改backend/config.py文件**
-直接修改`backend/config.py`中的默认值（不推荐，不利于多环境管理）
-
 **注意**：
 - 生产环境务必使用强密码和密钥
 - 建议使用环境变量方式配置，更安全
 - `.env.prod`文件是可选的，如果不创建，可以直接设置环境变量
 
-**步骤3：使用WSGI服务器部署后端**
+**步骤3：启动后端服务**
 
-推荐使用Gunicorn或uWSGI作为WSGI服务器：
+使用Gunicorn启动后端服务：
 
 ```bash
-# 安装Gunicorn
-uv pip install gunicorn
-
 # 使用Gunicorn启动后端服务
 # 示例：使用4个工作进程，绑定到0.0.0.0:5001
-gunicorn -w 4 -b 0.0.0.0:5001 app:app
+gunicorn -w 4 -b 0.0.0.0:5001 app:app --daemon
 ```
 
-#### 2. 前端部署
+### 2. 前端部署
 
 **步骤1：构建前端项目**
 
 ```bash
 # 在frontend目录下
+npm install
 npm run build
 ```
 
@@ -294,8 +291,9 @@ npm run build
 
 **步骤2：部署前端静态文件**
 
-可以使用Nginx或Apache等Web服务器部署前端静态文件。以下是Nginx配置示例：
+使用Nginx部署前端静态文件并配置反向代理：
 
+**Nginx配置示例**：
 ```nginx
 server {
     listen 80;
@@ -319,15 +317,19 @@ server {
 }
 ```
 
-**步骤3：启动生产环境**
+**步骤3：启动服务**
 
 ```bash
 # 启动后端服务
 cd /path/to/DS-System
-source venv_prod/bin/activate
+venv_prod\Scripts\activate
 gunicorn -w 4 -b 0.0.0.0:5001 app:app --daemon
 
 # 启动Nginx服务
+# Windows系统
+net start nginx
+
+# Linux系统
 systemctl start nginx
 systemctl enable nginx
 ```
@@ -335,6 +337,14 @@ systemctl enable nginx
 **步骤4：验证部署**
 
 在浏览器中访问：`http://your-domain.com` 或 `https://your-domain.com`（如果配置了HTTPS）
+
+### 3. 部署注意事项
+
+- 确保MySQL服务已启动并正常运行
+- 确保创建了所需的数据库（webtools和datashare）
+- 生产环境务必使用强密码和密钥
+- 定期备份数据库和上传文件
+- 配置适当的防火墙规则，只开放必要的端口
 
 ## 项目结构
 

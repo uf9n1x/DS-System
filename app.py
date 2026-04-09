@@ -5,7 +5,7 @@
 import os
 import sys
 from datetime import timedelta
-from flask import Flask, send_from_directory, send_file
+from flask import Flask, send_from_directory, send_file, jsonify
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -33,7 +33,7 @@ app.config['SQLALCHEMY_BINDS'] = {
 }
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['DEBUG'] = True
+app.config['DEBUG'] = DEBUG
 
 # 添加日志配置
 import logging
@@ -86,6 +86,34 @@ def verify_token_identifier(headers, payload):
 # 确保上传目录存在
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# 前端静态文件服务（生产环境）
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'dist')
+
+# 定义前端静态文件服务路由
+@app.route('/')
+def index():
+    """
+    服务前端首页
+    """
+    # 返回index.html
+    index_path = os.path.join(FRONTEND_DIST, 'index.html')
+    if os.path.exists(index_path):
+        return send_file(index_path)
+    
+    return jsonify({'error': 'Not found'}), 404
+
+# 静态文件服务
+@app.route('/static/<path:path>')
+def static_files(path):
+    """
+    服务前端静态文件
+    """
+    file_path = os.path.join(FRONTEND_DIST, 'static', path)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return send_from_directory(os.path.join(FRONTEND_DIST, 'static'), path)
+    
+    return jsonify({'error': 'Not found'}), 404
+
 # 导入并注册路由
 from backend.routes.auth import bp as auth_bp
 from backend.routes.files import bp as files_bp
@@ -97,27 +125,13 @@ app.register_blueprint(files_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(data_bp)
 
-# 前端静态文件服务（生产环境）
-FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'dist')
-
-@app.route('/', defaults={'path': ''})
+# 其他前端路由（SPA路由） - 必须放在最后，作为fallback
 @app.route('/<path:path>')
-def serve_frontend(path):
+def frontend_routes(path):
     """
-    服务前端静态文件
-    
-    对于SPA应用，所有非API路由都返回index.html
+    处理前端SPA路由
     """
-    # API路由由蓝图处理
-    if path.startswith('api/') or path.startswith('upload/'):
-        return app.send_static_file(path)
-    
-    # 检查请求的文件是否存在
-    file_path = os.path.join(FRONTEND_DIST, path)
-    if path and os.path.exists(file_path) and os.path.isfile(file_path):
-        return send_from_directory(FRONTEND_DIST, path)
-    
-    # 返回index.html（SPA路由）
+    # 对于前端路由，返回index.html（SPA路由）
     index_path = os.path.join(FRONTEND_DIST, 'index.html')
     if os.path.exists(index_path):
         return send_file(index_path)
